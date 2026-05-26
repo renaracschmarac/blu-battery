@@ -27,7 +27,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ParcelUuid;
-import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
@@ -51,7 +50,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class MainActivity extends Activity {
-    private static final String TAG = "BluBattery";
     private static final int REQUEST_BLUETOOTH = 100;
     private static final int DEFAULT_POLL_INTERVAL_MS = 200;
     private static final String SETTINGS_NAME = "display_settings";
@@ -104,7 +102,6 @@ public final class MainActivity extends Activity {
                 commandCharacteristic.setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE);
                 commandCharacteristic.setValue(STATUS_REQUEST);
                 if (!gatt.writeCharacteristic(commandCharacteristic)) {
-                    Log.w(TAG, "telemetry request failed");
                     view.setStatus("Telemetry request failed");
                 }
                 handler.postDelayed(this, pollIntervalMs);
@@ -118,12 +115,9 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pollIntervalMs = Math.max(50, Math.min(10000,
                 getIntent().getIntExtra("poll_interval_ms", DEFAULT_POLL_INTERVAL_MS)));
-        Log.i(TAG, "poll_interval_ms=" + pollIntervalMs);
         preferences = getSharedPreferences(SETTINGS_NAME, MODE_PRIVATE);
         float ampsOut = Math.abs(preferences.getFloat(KEY_AMPS_OUT, DEFAULT_AMPS_OUT));
         float ampsIn = Math.abs(preferences.getFloat(KEY_AMPS_IN, DEFAULT_AMPS_IN));
-        Log.i(TAG, String.format(Locale.US,
-                "current_scale out=-%.1fA in=+%.1fA", ampsOut, ampsIn));
         view = new MetricView(this, ampsOut, ampsIn);
         setContentView(createContentView());
         hideSystemUi();
@@ -188,8 +182,6 @@ public final class MainActivity extends Activity {
                                 .putFloat(KEY_AMPS_IN, in)
                                 .apply();
                         view.setCurrentScale(out, in);
-                        Log.i(TAG, String.format(Locale.US,
-                                "current_scale out=-%.1fA in=+%.1fA", out, in));
                         dialog.dismiss();
                     } catch (NumberFormatException error) {
                         Toast.makeText(this,
@@ -275,7 +267,6 @@ public final class MainActivity extends Activity {
                 BluetoothDevice saved = adapter.getRemoteDevice(savedAddress);
                 String savedLabel = preferences.getString(KEY_BATTERY_LABEL, savedAddress);
                 view.setStatus("Connecting to " + savedLabel);
-                Log.i(TAG, "connecting_saved address=" + savedAddress);
                 connectDevice(saved);
                 return;
             } catch (IllegalArgumentException error) {
@@ -303,7 +294,6 @@ public final class MainActivity extends Activity {
         handler.removeCallbacks(resolveScanResults);
         view.setStatus("Scanning for BMS");
         scanning = true;
-        Log.i(TAG, "scan_started");
         scanner.startScan(scanCallback);
     }
 
@@ -354,8 +344,6 @@ public final class MainActivity extends Activity {
             String name = advertisedName(result);
             if (!foundBms.containsKey(device.getAddress())) {
                 foundBms.put(device.getAddress(), new DiscoveredBms(device, name, result.getRssi()));
-                Log.i(TAG, "scan_candidate address=" + device.getAddress() + " name=" + name
-                        + " hint=" + candidateHint(result));
                 view.setStatus("Found " + foundBms.size() + " BMS candidate(s)");
                 handler.removeCallbacks(resolveScanResults);
                 handler.postDelayed(resolveScanResults, SCAN_SELECTION_DELAY_MS);
@@ -381,21 +369,6 @@ public final class MainActivity extends Activity {
             }
         }
         return BOOTSTRAP_BMS_NAME.equalsIgnoreCase(advertisedName(result).trim());
-    }
-
-    @SuppressWarnings("MissingPermission")
-    private String candidateHint(ScanResult result) {
-        ScanRecord record = result.getScanRecord();
-        if (record != null) {
-            List<ParcelUuid> services = record.getServiceUuids();
-            if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
-                return "advertised-service";
-            }
-            if (record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null) {
-                return "manufacturer-data";
-            }
-        }
-        return "advertised-name";
     }
 
     @SuppressWarnings("MissingPermission")
@@ -441,11 +414,9 @@ public final class MainActivity extends Activity {
                 return;
             }
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
-                Log.i(TAG, "connected");
                 view.setStatus("Connected");
                 bluetoothGatt.discoverServices();
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                Log.i(TAG, "disconnected status=" + status);
                 handler.removeCallbacks(requestStatus);
                 handler.removeCallbacks(rejectUnresponsiveCandidate);
                 commandCharacteristic = null;
@@ -453,7 +424,6 @@ public final class MainActivity extends Activity {
                 gatt = null;
                 if (tryingRememberedDevice) {
                     tryingRememberedDevice = false;
-                    Log.i(TAG, "saved connection unavailable; scanning");
                 }
                 view.setStatus("Disconnected - searching");
                 handler.postDelayed(MainActivity.this::beginScan, 1000);
@@ -525,12 +495,10 @@ public final class MainActivity extends Activity {
                 .putString(KEY_BATTERY_ADDRESS, device.getAddress())
                 .putString(KEY_BATTERY_LABEL, label)
                 .apply();
-        Log.i(TAG, "remembered_bms address=" + device.getAddress() + " name=" + label);
     }
 
     @SuppressWarnings("MissingPermission")
     private void rejectCandidate(BluetoothGatt bluetoothGatt, String status) {
-        Log.i(TAG, "rejected_candidate address=" + bluetoothGatt.getDevice().getAddress());
         if (tryingRememberedDevice) {
             preferences.edit().remove(KEY_BATTERY_ADDRESS).remove(KEY_BATTERY_LABEL).apply();
             tryingRememberedDevice = false;
@@ -576,9 +544,6 @@ public final class MainActivity extends Activity {
         double voltage = unsigned16(frame, 83) * 0.1;
         double current = (unsigned16(frame, 85) - 30000) * 0.1;
         double remaining = unsigned16(frame, 99) * 0.1;
-        Log.i(TAG, String.format(Locale.US,
-                "telemetry voltage=%.1fV current=%.1fA remaining=%.1fAh",
-                voltage, current, remaining));
         view.setMetrics(voltage, current, remaining);
     }
 

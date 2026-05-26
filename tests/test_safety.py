@@ -26,3 +26,21 @@ def test_only_fixed_telemetry_write_is_exposed() -> None:
     assert ble_source.count("write_gatt_char") == 1
     assert ble_source.count("start_notify") == 1
     assert "build_status_request()" in ble_source
+
+
+def test_android_monitor_does_not_log_battery_or_device_data() -> None:
+    android_source = (
+        Path(__file__).resolve().parents[1]
+        / "android-app"
+        / "app"
+        / "src"
+        / "main"
+        / "java"
+        / "com"
+        / "blubattery"
+        / "monitor"
+        / "MainActivity.java"
+    ).read_text()
+
+    assert "android.util.Log" not in android_source
+    assert "Log." not in android_source

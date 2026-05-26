@@ -216,7 +216,8 @@ connection and telemetry response, the Bluetooth address is stored for a faster
 direct connection at subsequent app starts. If a stored-address connection
 fails, the app returns to discovery and validation. Use `SETTINGS` > `Re-scan
 for battery` to discard the remembered selection and find/select a different
-BMS.
+BMS. The remembered address is held in app-private preferences for reconnect
+only; it is not written to a telemetry log.
 
 The `CURRENT` band changes color as current changes: it is dark green at
 `0 A`, yellow at half the configured current magnitude, and bright red at the
@@ -250,15 +251,10 @@ adb shell am start -n com.blubattery.monitor/.MainActivity
 ```
 
 Accept the Bluetooth permission prompt on first launch. For verification, read
-live samples from Android logs:
-
-```bash
-adb logcat -s BluBattery:I '*:S'
-```
-
-The app logs `connected`, then repeating telemetry lines such as
-`telemetry voltage=<volts>V current=<amps>A remaining=<amp-hours>Ah` while the
-phone retains the BLE connection.
+the displayed `VOLTAGE`, `CURRENT`, and `REMAINING` fields and confirm that
+they update while the app remains connected. The Android app does not write
+battery telemetry, Bluetooth address, or connection events to Android system
+logs or application-owned log files.
 
 The default Android refresh interval is `200 ms` (`5 Hz`). For diagnostics, an
 alternate interval can be set when launching over ADB:
@@ -271,7 +267,7 @@ adb shell am start -n com.blubattery.monitor/.MainActivity \
 
 Validated on an attached Android API 35 phone on May 25, 2026 after confirming
 that the laptop did not have a battery connection.
-The installed debug app connected and reported repeating telemetry samples
+The installed debug app connected and updated displayed telemetry samples
 without a disconnect event.
 
 Rate testing on the same phone and BMS established `200 ms` as the fastest
@@ -283,12 +279,13 @@ cleanly verified polling setting:
   after reconnect it did not produce a meaningful sustained improvement.
 - `150 ms` (requested `6.7 Hz`): remained connected after startup but delivered
   only about `3.5 Hz`, so requests were outpacing usable responses.
-- `100 ms` (requested `10 Hz`): logged a GATT disconnect and delivered only 52
-  samples during the screening capture.
+- `100 ms` (requested `10 Hz`): encountered a GATT disconnect and delivered
+  only 52 samples during the screening capture.
 
-The final installed build, launched without an interval override, logged
-`poll_interval_ms=200` and delivered 138 telemetry samples in approximately
-28.1 seconds after connecting (about `4.9 Hz`) with no failure or disconnect.
+The final tested diagnostic build, launched without an interval override,
+delivered 138 telemetry samples in approximately 28.1 seconds after connecting
+(about `4.9 Hz`) with no failure or disconnect. Continuous Android telemetry
+logging used for that rate study has since been removed.
 
 ## Notes
 
