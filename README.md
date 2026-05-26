@@ -200,18 +200,23 @@ The Android app in `android-app/` provides a portrait, full-screen display with
 three equal bands: `VOLTAGE`, `CURRENT`, and `REMAINING`. While this monitor
 screen is in the foreground, it keeps the phone display awake so Android does
 not time out and lock the screen during monitoring. On first use it scans for
-Daly-compatible BMS candidates using the observed advertisement marker or
-advertised telemetry service, then requires the `FFF0` service with `FFF1` and
-`FFF2` characteristics before reading data or remembering the device. It
-establishes one BLE connection, subscribes once to `FFF1`, and sends only the
-fixed read-status request on `FFF2` five times per second.
+Daly-compatible BMS candidates using the observed advertisement marker, an
+advertised telemetry service, or the known advertised name
+`52v20ah Samsung 50s` as a bootstrap hint. A name match alone is not treated
+as proof of a supported battery: the app requires the `FFF0` service with
+`FFF1` and `FFF2` characteristics and a valid Daly telemetry response before
+remembering the Bluetooth address or showing live data. It establishes one BLE
+connection, subscribes once to `FFF1`, and sends only the fixed read-status
+request on `FFF2` five times per second.
 
-If one compatible BMS candidate is detected, the app selects it automatically.
-If multiple candidates are detected, it shows a device selection list including
-name, address, and signal level. After a successful validated connection, the
-Bluetooth address is stored for a faster direct connection at subsequent app
-starts. Use `SETTINGS` > `Re-scan for battery` to discard the remembered
-selection and find/select a different BMS.
+If one BMS candidate is detected, the app selects it for protocol validation
+automatically. If multiple candidates are detected, it shows a device selection
+list including name, address, and signal level. After a successful validated
+connection and telemetry response, the Bluetooth address is stored for a faster
+direct connection at subsequent app starts. If a stored-address connection
+fails, the app returns to discovery and validation. Use `SETTINGS` > `Re-scan
+for battery` to discard the remembered selection and find/select a different
+BMS.
 
 The `CURRENT` band changes color as current changes: it is dark green at
 `0 A`, yellow at half the configured current magnitude, and bright red at the

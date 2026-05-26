@@ -61,8 +61,10 @@ public final class MainActivity extends Activity {
     private static final String KEY_BATTERY_LABEL = "battery_label";
     private static final float DEFAULT_AMPS_OUT = 100.0f;
     private static final float DEFAULT_AMPS_IN = 20.0f;
+    private static final String BOOTSTRAP_BMS_NAME = "52v20ah Samsung 50s";
     private static final int OBSERVED_BMS_ADVERTISEMENT_ID = 0x0104;
     private static final int SCAN_SELECTION_DELAY_MS = 3000;
+    private static final int TELEMETRY_VALIDATION_TIMEOUT_MS = 4000;
     private static final UUID SERVICE_UUID =
             UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb");
     private static final UUID NOTIFY_UUID =
@@ -86,9 +88,14 @@ public final class MainActivity extends Activity {
     private boolean scanning;
     private boolean tryingRememberedDevice;
     private boolean selectingDevice;
-    private boolean suppressDisconnectScan;
+    private boolean candidateValidated;
     private int pollIntervalMs;
     private final Runnable resolveScanResults = this::chooseScannedDevice;
+    private final Runnable rejectUnresponsiveCandidate = () -> {
+        if (!candidateValidated && gatt != null) {
+            rejectCandidate(gatt, "No valid BMS telemetry");
+        }
+    };
 
     private final Runnable requestStatus = new Runnable() {
         @Override
@@ -217,9 +224,9 @@ public final class MainActivity extends Activity {
     protected void onDestroy() {
         handler.removeCallbacks(requestStatus);
         handler.removeCallbacks(resolveScanResults);
+        handler.removeCallbacks(rejectUnresponsiveCandidate);
         stopScan();
         if (gatt != null) {
-            suppressDisconnectScan = true;
             gatt.disconnect();
             gatt.close();
             gatt = null;
@@ -296,6 +303,7 @@ public final class MainActivity extends Activity {
         handler.removeCallbacks(resolveScanResults);
         view.setStatus("Scanning for BMS");
         scanning = true;
+        Log.i(TAG, "scan_started");
         scanner.startScan(scanCallback);
     }
 
@@ -311,6 +319,7 @@ public final class MainActivity extends Activity {
     private void rescanForBattery() {
         handler.removeCallbacks(requestStatus);
         handler.removeCallbacks(resolveScanResults);
+        handler.removeCallbacks(rejectUnresponsiveCandidate);
         stopScan();
         tryingRememberedDevice = false;
         preferences.edit().remove(KEY_BATTERY_ADDRESS).remove(KEY_BATTERY_LABEL).apply();
@@ -327,6 +336,9 @@ public final class MainActivity extends Activity {
     private void connectDevice(BluetoothDevice device) {
         stopScan();
         selectingDevice = false;
+        candidateValidated = false;
+        responseBuffer.reset();
+        handler.removeCallbacks(rejectUnresponsiveCandidate);
         view.setStatus("Connecting to BMS");
         gatt = device.connectGatt(MainActivity.this, false, gattCallback, BluetoothDevice.TRANSPORT_LE);
     }
@@ -342,7 +354,8 @@ public final class MainActivity extends Activity {
             String name = advertisedName(result);
             if (!foundBms.containsKey(device.getAddress())) {
                 foundBms.put(device.getAddress(), new DiscoveredBms(device, name, result.getRssi()));
-                Log.i(TAG, "scan_candidate address=" + device.getAddress() + " name=" + name);
+                Log.i(TAG, "scan_candidate address=" + device.getAddress() + " name=" + name
+                        + " hint=" + candidateHint(result));
                 view.setStatus("Found " + foundBms.size() + " BMS candidate(s)");
                 handler.removeCallbacks(resolveScanResults);
                 handler.postDelayed(resolveScanResults, SCAN_SELECTION_DELAY_MS);
@@ -355,16 +368,34 @@ public final class MainActivity extends Activity {
         }
     };
 
+    @SuppressWarnings("MissingPermission")
     private boolean isBmsCandidate(ScanResult result) {
         ScanRecord record = result.getScanRecord();
-        if (record == null) {
-            return false;
+        if (record != null) {
+            List<ParcelUuid> services = record.getServiceUuids();
+            if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
+                return true;
+            }
+            if (record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null) {
+                return true;
+            }
         }
-        List<ParcelUuid> services = record.getServiceUuids();
-        if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
-            return true;
+        return BOOTSTRAP_BMS_NAME.equalsIgnoreCase(advertisedName(result).trim());
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private String candidateHint(ScanResult result) {
+        ScanRecord record = result.getScanRecord();
+        if (record != null) {
+            List<ParcelUuid> services = record.getServiceUuids();
+            if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
+                return "advertised-service";
+            }
+            if (record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null) {
+                return "manufacturer-data";
+            }
         }
-        return record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null;
+        return "advertised-name";
     }
 
     @SuppressWarnings("MissingPermission")
@@ -405,6 +436,10 @@ public final class MainActivity extends Activity {
         @Override
         @SuppressWarnings("MissingPermission")
         public void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
+            if (bluetoothGatt != gatt) {
+                bluetoothGatt.close();
+                return;
+            }
             if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "connected");
                 view.setStatus("Connected");
@@ -412,13 +447,10 @@ public final class MainActivity extends Activity {
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 Log.i(TAG, "disconnected status=" + status);
                 handler.removeCallbacks(requestStatus);
+                handler.removeCallbacks(rejectUnresponsiveCandidate);
                 commandCharacteristic = null;
                 bluetoothGatt.close();
                 gatt = null;
-                if (suppressDisconnectScan) {
-                    suppressDisconnectScan = false;
-                    return;
-                }
                 if (tryingRememberedDevice) {
                     tryingRememberedDevice = false;
                     Log.i(TAG, "saved connection unavailable; scanning");
@@ -431,6 +463,9 @@ public final class MainActivity extends Activity {
         @Override
         @SuppressWarnings("MissingPermission")
         public void onServicesDiscovered(BluetoothGatt bluetoothGatt, int status) {
+            if (bluetoothGatt != gatt) {
+                return;
+            }
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 rejectCandidate(bluetoothGatt, "Service discovery failed");
                 return;
@@ -447,8 +482,6 @@ public final class MainActivity extends Activity {
                 rejectCandidate(bluetoothGatt, "Candidate is not a compatible BMS");
                 return;
             }
-            rememberBattery(bluetoothGatt.getDevice());
-            tryingRememberedDevice = false;
             bluetoothGatt.setCharacteristicNotification(notify, true);
             cccd.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
             bluetoothGatt.writeDescriptor(cccd);
@@ -456,9 +489,14 @@ public final class MainActivity extends Activity {
 
         @Override
         public void onDescriptorWrite(BluetoothGatt bluetoothGatt, BluetoothGattDescriptor descriptor, int status) {
+            if (bluetoothGatt != gatt) {
+                return;
+            }
             if (descriptor.getUuid().equals(CCCD_UUID) && status == BluetoothGatt.GATT_SUCCESS) {
-                view.setStatus(String.format(Locale.US, "Live %.1f Hz", 1000.0 / pollIntervalMs));
+                view.setStatus("Verifying BMS telemetry");
                 handler.removeCallbacks(requestStatus);
+                handler.removeCallbacks(rejectUnresponsiveCandidate);
+                handler.postDelayed(rejectUnresponsiveCandidate, TELEMETRY_VALIDATION_TIMEOUT_MS);
                 handler.post(requestStatus);
             } else {
                 view.setStatus("Notification setup failed");
@@ -467,6 +505,9 @@ public final class MainActivity extends Activity {
 
         @Override
         public void onCharacteristicChanged(BluetoothGatt bluetoothGatt, BluetoothGattCharacteristic characteristic) {
+            if (bluetoothGatt != gatt) {
+                return;
+            }
             if (characteristic.getUuid().equals(NOTIFY_UUID)) {
                 acceptChunk(characteristic.getValue());
             }
@@ -494,11 +535,11 @@ public final class MainActivity extends Activity {
             preferences.edit().remove(KEY_BATTERY_ADDRESS).remove(KEY_BATTERY_LABEL).apply();
             tryingRememberedDevice = false;
         }
-        suppressDisconnectScan = true;
         bluetoothGatt.disconnect();
         bluetoothGatt.close();
         gatt = null;
         commandCharacteristic = null;
+        handler.removeCallbacks(rejectUnresponsiveCandidate);
         view.setStatus(status + " - scanning");
         handler.postDelayed(MainActivity.this::beginScan, 1000);
     }
@@ -524,6 +565,13 @@ public final class MainActivity extends Activity {
         if (!validStatusFrame(frame)) {
             view.setStatus("Invalid response");
             return;
+        }
+        if (!candidateValidated && gatt != null) {
+            candidateValidated = true;
+            handler.removeCallbacks(rejectUnresponsiveCandidate);
+            rememberBattery(gatt.getDevice());
+            tryingRememberedDevice = false;
+            view.setStatus(String.format(Locale.US, "Live %.1f Hz", 1000.0 / pollIntervalMs));
         }
         double voltage = unsigned16(frame, 83) * 0.1;
         double current = (unsigned16(frame, 85) - 30000) * 0.1;
