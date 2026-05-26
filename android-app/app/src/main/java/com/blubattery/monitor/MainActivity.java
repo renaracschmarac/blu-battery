@@ -32,6 +32,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
@@ -107,6 +108,7 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pollIntervalMs = Math.max(50, Math.min(10000,
                 getIntent().getIntExtra("poll_interval_ms", DEFAULT_POLL_INTERVAL_MS)));
         Log.i(TAG, "poll_interval_ms=" + pollIntervalMs);

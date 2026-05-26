@@ -197,8 +197,10 @@ throughout the run.
 ## Android Monitor
 
 The Android app in `android-app/` provides a portrait, full-screen display with
-three equal bands: `VOLTAGE`, `CURRENT`, and `REMAINING`. On first use it scans
-for Daly-compatible BMS candidates using the observed advertisement marker or
+three equal bands: `VOLTAGE`, `CURRENT`, and `REMAINING`. While this monitor
+screen is in the foreground, it keeps the phone display awake so Android does
+not time out and lock the screen during monitoring. On first use it scans for
+Daly-compatible BMS candidates using the observed advertisement marker or
 advertised telemetry service, then requires the `FFF0` service with `FFF1` and
 `FFF2` characteristics before reading data or remembering the device. It
 establishes one BLE connection, subscribes once to `FFF1`, and sends only the
