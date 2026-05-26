@@ -44,3 +44,5 @@ def test_android_monitor_does_not_log_battery_or_device_data() -> None:
 
     assert "android.util.Log" not in android_source
     assert "Log." not in android_source
+    assert "BOOTSTRAP_BMS_NAME" not in android_source
+    assert "52v20ah Samsung 50s" not in android_source

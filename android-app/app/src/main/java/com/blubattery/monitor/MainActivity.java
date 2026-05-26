@@ -59,7 +59,6 @@ public final class MainActivity extends Activity {
     private static final String KEY_BATTERY_LABEL = "battery_label";
     private static final float DEFAULT_AMPS_OUT = 100.0f;
     private static final float DEFAULT_AMPS_IN = 20.0f;
-    private static final String BOOTSTRAP_BMS_NAME = "52v20ah Samsung 50s";
     private static final int OBSERVED_BMS_ADVERTISEMENT_ID = 0x0104;
     private static final int SCAN_SELECTION_DELAY_MS = 3000;
     private static final int TELEMETRY_VALIDATION_TIMEOUT_MS = 4000;
@@ -359,16 +358,14 @@ public final class MainActivity extends Activity {
     @SuppressWarnings("MissingPermission")
     private boolean isBmsCandidate(ScanResult result) {
         ScanRecord record = result.getScanRecord();
-        if (record != null) {
-            List<ParcelUuid> services = record.getServiceUuids();
-            if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
-                return true;
-            }
-            if (record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null) {
-                return true;
-            }
+        if (record == null) {
+            return false;
         }
-        return BOOTSTRAP_BMS_NAME.equalsIgnoreCase(advertisedName(result).trim());
+        List<ParcelUuid> services = record.getServiceUuids();
+        if (services != null && services.contains(new ParcelUuid(SERVICE_UUID))) {
+            return true;
+        }
+        return record.getManufacturerSpecificData(OBSERVED_BMS_ADVERTISEMENT_ID) != null;
     }
 
     @SuppressWarnings("MissingPermission")
@@ -642,6 +639,7 @@ public final class MainActivity extends Activity {
             this.ampsOut = ampsOut;
             this.ampsIn = ampsIn;
             paint.setTypeface(android.graphics.Typeface.create("sans", android.graphics.Typeface.BOLD));
+            updateAccessibilityDescription();
         }
 
         void setMetrics(double voltageValue, double currentValue, double remainingValue) {
@@ -649,6 +647,7 @@ public final class MainActivity extends Activity {
             current = String.format(Locale.US, "%.1f A", currentValue);
             remaining = String.format(Locale.US, "%.1f Ah", remainingValue);
             this.currentValue = currentValue;
+            updateAccessibilityDescription();
             postInvalidate();
         }
 
@@ -668,7 +667,14 @@ public final class MainActivity extends Activity {
 
         void setStatus(String value) {
             status = value;
+            updateAccessibilityDescription();
             postInvalidate();
+        }
+
+        private void updateAccessibilityDescription() {
+            setContentDescription(String.format(Locale.US,
+                    "Voltage %s. Current %s. Remaining %s. Status %s.",
+                    voltage, current, remaining, status));
         }
 
         @Override

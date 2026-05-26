@@ -200,12 +200,12 @@ The Android app in `android-app/` provides a portrait, full-screen display with
 three equal bands: `VOLTAGE`, `CURRENT`, and `REMAINING`. While this monitor
 screen is in the foreground, it keeps the phone display awake so Android does
 not time out and lock the screen during monitoring. On first use it scans for
-Daly-compatible BMS candidates using the observed advertisement marker, an
-advertised telemetry service, or the known advertised name
-`52v20ah Samsung 50s` as a bootstrap hint. A name match alone is not treated
-as proof of a supported battery: the app requires the `FFF0` service with
-`FFF1` and `FFF2` characteristics and a valid Daly telemetry response before
-remembering the Bluetooth address or showing live data. It establishes one BLE
+BMS candidates using non-name BLE signals: the observed manufacturer-data
+marker or an advertised `FFF0` telemetry service. It then requires the `FFF0`
+service with `FFF1` and `FFF2` characteristics and a valid Daly telemetry
+response before remembering the Bluetooth address or showing live data. The
+advertised device name is displayed to help a person distinguish candidates,
+but it is not used to identify or accept a BMS. The app establishes one BLE
 connection, subscribes once to `FFF1`, and sends only the fixed read-status
 request on `FFF2` five times per second.
 
