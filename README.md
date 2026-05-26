@@ -21,10 +21,61 @@ capacity in Ah, plus individual cell voltages, without changing BMS
 configuration or switching power paths. In monitor mode the app connects once,
 subscribes once, and refreshes telemetry on the existing BLE connection.
 
+## Requirements
+
+### Linux Monitor And Python Tests
+
+- Linux host with Bluetooth Low Energy hardware and BlueZ available.
+- Python `3.12` or newer with `venv` and `pip`.
+- Python runtime packages installed from `pyproject.toml`: `bleak>=0.22` and
+  `rich>=13.7`.
+- Python test dependency: `pytest>=8.0`, installed by using the `dev` extra.
+- `bluetoothctl` from BlueZ for persistent-connection verification.
+- `btmon` from BlueZ tools is optional for protocol-level observation.
+- A compatible Daly-family BLE BMS advertising the `FFF0` service/profile for
+  live hardware testing. Unit tests and `--fake` mode do not require hardware.
+
+The Linux BLE process and the Android app must not connect to the same BMS at
+the same time.
+
+### Android Build And Device Testing
+
+- JDK `17`.
+- Gradle compatible with Android Gradle Plugin `8.13.0`; the app was verified
+  with Gradle `8.14.3`.
+- Android SDK Platform `35` and Android SDK Build Tools installed.
+- Android SDK Platform Tools, including `adb`, for phone installation and log
+  verification.
+- An Android device with Bluetooth Low Energy support running Android `6.0`
+  (API `23`) or newer. The app targets API `35`.
+- USB debugging authorized on the test phone when installing or inspecting the
+  app with `adb`.
+- Bluetooth permission approval in the app on first launch; Android `6` through
+  `11` also require location permission for BLE scanning.
+
+This repository does not commit a Gradle wrapper. Install Gradle separately or
+use a trusted Gradle wrapper already provisioned in your Android development
+environment.
+
 ## Install
 
+Create a Python virtual environment and install the Linux monitor and tests:
+
 ```bash
-python3 -m pip install -e ".[dev]"
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+```
+
+Run the automated Python tests:
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Build the Android debug APK after the Android requirements above are installed:
+
+```bash
+gradle -p android-app --no-daemon assembleDebug
 ```
 
 ## Run
