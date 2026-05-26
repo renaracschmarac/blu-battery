@@ -1,0 +1,29 @@
+[project]
+name = "blu-battery"
+version = "0.1.0"
+description = "Zero-write Bluetooth e-bike battery monitor"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "bleak>=0.22",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+blu-battery = "blu_battery.app:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
